@@ -1,4 +1,4 @@
-const CACHE = "faragh-v2";
+const CACHE = "faragh-v3";
 const ASSETS = ["/", "/index.html", "/style.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", e => {
