@@ -1,0 +1,128 @@
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+body {
+  background: #f4f7f6;
+  color: #1a202c;
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+
+/* شاشة القفل */
+#lockScreen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2c7a7b, #285e61);
+  padding: 20px;
+}
+.lock-box {
+  background: white;
+  padding: 30px;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+.lock-box h1 { color: #2c7a7b; margin-bottom: 6px; }
+.lock-box p { color: #718096; font-size: 14px; margin-bottom: 20px; }
+.lock-box input {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 16px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.lock-box button {
+  width: 100%;
+  padding: 14px;
+  background: #2c7a7b;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.error { color: #e53e3e !important; margin-top: 10px; }
+
+/* التطبيق */
+header {
+  background: linear-gradient(135deg, #2c7a7b, #285e61);
+  color: white;
+  padding: 24px 20px;
+  text-align: center;
+  border-radius: 0 0 24px 24px;
+}
+header h1 { font-size: 22px; }
+header p { font-size: 14px; opacity: 0.9; margin-top: 4px; }
+
+main { padding: 16px; max-width: 600px; margin: 0 auto; }
+
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.card label { font-weight: bold; display: block; margin-bottom: 10px; color: #2d3748; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button {
+  padding: 10px 16px;
+  border: 2px solid #e2e8f0;
+  background: white;
+  border-radius: 999px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.chips button.active {
+  background: #2c7a7b;
+  color: white;
+  border-color: #2c7a7b;
+}
+
+#suggestBtn {
+  width: 100%;
+  padding: 16px;
+  background: #2c7a7b;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+#suggestBtn:disabled { background: #cbd5e0; cursor: not-allowed; }
+
+#map {
+  height: 300px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  display: none;
+}
+#map.visible { display: block; }
+
+#results { display: flex; flex-direction: column; gap: 12px; }
+
+.result-card {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-right: 4px solid #2c7a7b;
+}
+.result-card h3 { font-size: 17px; margin-bottom: 4px; }
+.result-card .meta { font-size: 13px; color: #718096; margin-bottom: 8px; }
+.result-card .desc { font-size: 14px; color: #4a5568; }
+.result-card .notes { font-size: 13px; color: #b7791f; margin-top: 6px; }
+
+.empty { text-align: center; color: #718096; padding: 20px; }

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>ساعة فراغ - العائلة</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#2c7a7b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ساعة فراغ" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- شاشة كلمة المرور -->
+  <div id="lockScreen">
+    <div class="lock-box">
+      <h1>🔒 ساعة فراغ</h1>
+      <p>تطبيق العائلة الخاص</p>
+      <input type="password" id="passInput" placeholder="كلمة مرور العائلة" />
+      <button id="passBtn">دخول</button>
+      <p id="passError" class="error"></p>
+    </div>
+  </div>
+
+  <!-- التطبيق -->
+  <div id="app" class="hidden">
+    <header>
+      <h1>⏳ ساعة فراغ</h1>
+      <p>وش نسوي الحين؟</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <label>كم وقتك؟</label>
+        <div class="chips" id="timeChips">
+          <button data-val="30">30 دقيقة</button>
+          <button data-val="60">ساعة</button>
+          <button data-val="120">ساعتين</button>
+          <button data-val="999">أكثر</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <label>وش مزاجك؟</label>
+        <div class="chips" id="moodChips">
+          <button data-val="كوفي">☕ كوفي</button>
+          <button data-val="مطعم">🍽️ مطعم</button>
+          <button data-val="حديقة">🌳 حديقة</button>
+          <button data-val="ترفيه">🎡 ترفيه</button>
+          <button data-val="سينما">🎬 سينما</button>
+        </div>
+      </section>
+
+      <button id="suggestBtn" disabled>اقترح لي</button>
+
+      <div id="map"></div>
+
+      <div id="results"></div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
