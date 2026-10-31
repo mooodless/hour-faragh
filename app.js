@@ -1,5 +1,5 @@
 // ====== الإعدادات ======
-const FAMILY_PASS = "123456";              // ← غيّرها
+const FAMILY_PASS = "family2026";              // ← غيّرها
 const SUPABASE_URL = "https://qunmvyhlkdannjwghbhq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bm12eWhsa2Rhbm5qd2doYmhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzOTU1NTgsImV4cCI6MjEwODk3MTU1OH0.oKzEGhLLq3Nie0BH_BCXbYABV73NDwLZXyM5ujRwOFg";            // ← ضع مفتاح anon
 const HOME_CENTER = [26.41226, 50.093419];         // ← إحداثيات مدينتك
