@@ -126,3 +126,14 @@ main { padding: 16px; max-width: 600px; margin: 0 auto; }
 .result-card .notes { font-size: 13px; color: #b7791f; margin-top: 6px; }
 
 .empty { text-align: center; color: #718096; padding: 20px; }
+.gmaps-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #2c7a7b;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: bold;
+}
+.gmaps-link:hover {
+  text-decoration: underline;
+}
