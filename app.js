@@ -1,15 +1,15 @@
 // ====== الإعدادات ======
 const FAMILY_PASS = "family2026";              // ← غيّرها
 const SUPABASE_URL = "https://qunmvyhlkdannjwghbhq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bm12eWhsa2Rhbm5qd2doYmhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzOTU1NTgsImV4cCI6MjEwODk3MTU1OH0.oKzEGhLLq3Nie0BH_BCXbYABV73NDwLZXyM5ujRwOFg";            // ← ضع مفتاح anon
-const FALLBACK_CENTER = [26.41226, 50.093419];         // ← إحداثيات مدينتك
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bm12eWhsa2Rhbm5qd2doYmhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzOTU1NTgsImV4cCI6MjEwODk3MTU1OH0.oKzEGhLLq3Nie0BH_BCXbYABV73NDwLZXyM5ujRwOFg";
+const FALLBACK_CENTER = [26.41226, 50.093419]; // ← يُستخدم فقط إذا رفض المستخدم إذن الموقع
 
 // ====== الحالة ======
 let selectedTime = null;
 let selectedMood = null;
 let allPlaces = [];
 let map, markersLayer;
-let userLocation = null;
+let userLocation = null; // ← موقع المستخدم الحالي
 
 // ====== شاشة القفل ======
 const lockScreen = document.getElementById("lockScreen");
@@ -36,11 +36,12 @@ async function unlock() {
   app.classList.remove("hidden");
   initMap();
 
-  // جلب الموقع أولاً (سيظهر طلب الإذن للمستخدم)
+  // جلب موقع المستخدم أولاً (سيظهر طلب الإذن)
   userLocation = await getUserLocation();
+  console.log("📍 الموقع المستخدم:", userLocation);
 
   // توسيط الخريطة على موقع المستخدم
-  map.setView(userLocation, 13);
+  map.setView(userLocation, 12);
 
   // ثم تحميل الأماكن
   loadPlaces();
@@ -48,7 +49,7 @@ async function unlock() {
 
 // ====== الخريطة ======
 function initMap() {
-  map = L.map("map").setView(HOME_CENTER, 12);
+  map = L.map("map").setView(FALLBACK_CENTER, 12);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "© OpenStreetMap",
     maxZoom: 19
@@ -77,9 +78,9 @@ function getUserLocation() {
         resolve(FALLBACK_CENTER);
       },
       {
-        enableHighAccuracy: true,  // دقة عالية
-        timeout: 10000,             // 10 ثوانٍ كحد أقصى
-        maximumAge: 60000           // يمكن استخدام موقع محفوظ لمدة دقيقة
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
       }
     );
   });
@@ -147,7 +148,6 @@ document.getElementById("suggestBtn").addEventListener("click", async () => {
     await loadPlaces();
   }
 
-  // تأكد من وجود موقع المستخدم
   if (!userLocation) {
     userLocation = await getUserLocation();
   }
@@ -166,7 +166,7 @@ document.getElementById("suggestBtn").addEventListener("click", async () => {
     timeFiltered = filtered;
   }
 
-  // 3. الترتيب: التقييم أولاً، ثم عدد المقيمين، ثم المسافة من موقع المستخدم
+  // 3. الترتيب: التقييم → عدد المقيمين → المسافة من موقع المستخدم
   timeFiltered.sort((a, b) => {
     const ratingDiff = (b.rating || 0) - (a.rating || 0);
     if (Math.abs(ratingDiff) > 0.001) return ratingDiff;
@@ -174,29 +174,16 @@ document.getElementById("suggestBtn").addEventListener("click", async () => {
     const reviewDiff = (b.review_count || 0) - (a.review_count || 0);
     if (reviewDiff !== 0) return reviewDiff;
 
-    // المسافة من موقع المستخدم
     return distanceKm(userLocation[0], userLocation[1], a.lat, a.lng) -
            distanceKm(userLocation[0], userLocation[1], b.lat, b.lng);
   });
 
   const top = timeFiltered.slice(0, 5);
-  renderResults(top);
-  if (top.length > 0) {
-    const origin = userLocation || FALLBACK_CENTER;
-    const nearestDist = distanceKm(origin[0], origin[1], top[0].lat, top[0].lng);
-    if (nearestDist > 100) {
-      document.getElementById("results").insertAdjacentHTML("afterbegin",
-        `<p class="empty" style="background:#fef5e7; padding:12px; border-radius:12px; margin-bottom:12px;">
-          ⚠️ أنت بعيد عن الدمام (${nearestDist.toFixed(0)} كم). الأماكن المعروضة قد لا تكون قريبة منك.
-        </p>`
-      );
-    }
-  }
-  
+  renderResults(top, timeFiltered.length);
 });
 
 // ====== عرض النتائج ======
-function renderResults(places) {
+function renderResults(places, totalCount) {
   const resultsEl = document.getElementById("results");
   const mapEl = document.getElementById("map");
 
@@ -211,15 +198,29 @@ function renderResults(places) {
   mapEl.classList.add("visible");
   setTimeout(() => map.invalidateSize(), 100);
 
-  // استخدام موقع المستخدم في حساب المسافة
   const origin = userLocation || FALLBACK_CENTER;
 
-  resultsEl.innerHTML = places.map(p => {
+  // تحذير إذا كانت أقرب نتيجة بعيدة
+  const nearestDist = distanceKm(origin[0], origin[1], places[0].lat, places[0].lng);
+  let warning = "";
+  if (nearestDist > 100) {
+    warning = `<p class="empty" style="background:#fef5e7; padding:12px; border-radius:12px; margin-bottom:12px;">
+      ⚠️ أنت بعيد جداً (${nearestDist.toFixed(0)} كم). الأماكن المعروضة قد لا تكون قريبة منك.
+    </p>`;
+  }
+
+  // عرض عدد النتائج الإجمالي
+  let countMsg = "";
+  if (totalCount && totalCount > places.length) {
+    countMsg = `<p class="empty" style="background:#e6fffa; padding:10px; border-radius:12px; margin-bottom:12px;">
+      🔍 وجدنا ${totalCount} مكاناً مطابقاً، نعرض أفضل ${places.length}.
+    </p>`;
+  }
+
+  resultsEl.innerHTML = warning + countMsg + places.map(p => {
     const dist = distanceKm(origin[0], origin[1], p.lat, p.lng).toFixed(1);
     const ratingStars = p.rating ? `⭐ ${p.rating.toFixed(1)}` : "⭐ —";
     const reviews = p.review_count ? `(${p.review_count} تقييم)` : "";
-
-    // رابط لفتح الموقع في خرائط جوجل (اختياري)
     const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`;
 
     return `
