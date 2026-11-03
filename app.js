@@ -109,24 +109,38 @@ document.getElementById("suggestBtn").addEventListener("click", async () => {
     await loadPlaces();
   }
 
-  // فلترة حسب المزاج والوقت
-  let filtered = allPlaces.filter(p =>
-    p.category === selectedMood &&
-    (p.avg_time_minutes || 60) <= selectedTime
+  // 1. فلترة حسب المزاج
+  let filtered = allPlaces.filter(p => p.category === selectedMood);
+
+  // 2. تطبيق شرط "50% من الوقت": مدة الزيارة <= نصف الوقت المتاح
+  //    مثال: إذا اختار المستخدم "ساعة" (60 دقيقة)، يجب أن تكون مدة المكان <= 30 دقيقة
+  const maxVisitDuration = selectedTime * 0.5;
+  let timeFiltered = filtered.filter(p =>
+    (p.avg_time_minutes || 60) <= maxVisitDuration
   );
 
-  // إذا لا نتائج مطابقة بالوقت، خفف الفلتر
-  if (filtered.length === 0) {
-    filtered = allPlaces.filter(p => p.category === selectedMood);
+  // إذا لم توجد نتائج بهذا الشرط، نعرض جميع أماكن المزاج (مع إبقاء الترتيب حسب التقييم)
+  if (timeFiltered.length === 0) {
+    timeFiltered = filtered;
+    console.warn("لا توجد أماكن تستوفي شرط 50% من الوقت، يتم عرض جميع الأماكن المطابقة للمزاج.");
   }
 
-  // ترتيب حسب المسافة من مركز المدينة
-  filtered.sort((a, b) =>
-    distanceKm(HOME_CENTER[0], HOME_CENTER[1], a.lat, a.lng) -
-    distanceKm(HOME_CENTER[0], HOME_CENTER[1], b.lat, b.lng)
-  );
+  // 3. الترتيب: التقييم أولاً (تنازلي)، ثم عدد المقيمين (تنازلي)، ثم المسافة (تصاعدي)
+  timeFiltered.sort((a, b) => {
+    // التقييم الأعلى أولاً
+    const ratingDiff = (b.rating || 0) - (a.rating || 0);
+    if (Math.abs(ratingDiff) > 0.001) return ratingDiff;
 
-  const top = filtered.slice(0, 5);
+    // إذا تساوى التقييم، عدد المقيمين الأكبر أولاً
+    const reviewDiff = (b.review_count || 0) - (a.review_count || 0);
+    if (reviewDiff !== 0) return reviewDiff;
+
+    // أخيراً، الأقرب مسافة أولاً
+    return distanceKm(HOME_CENTER[0], HOME_CENTER[1], a.lat, a.lng) -
+           distanceKm(HOME_CENTER[0], HOME_CENTER[1], b.lat, b.lng);
+  });
+
+  const top = timeFiltered.slice(0, 5);
   renderResults(top);
 });
 
@@ -148,10 +162,15 @@ function renderResults(places) {
 
   resultsEl.innerHTML = places.map(p => {
     const dist = distanceKm(HOME_CENTER[0], HOME_CENTER[1], p.lat, p.lng).toFixed(1);
+    const ratingStars = p.rating ? `⭐ ${p.rating.toFixed(1)}` : "⭐ —";
+    const reviews = p.review_count ? `(${p.review_count} تقييم)` : "";
     return `
       <div class="result-card">
         <h3>${p.name}</h3>
-        <div class="meta">📍 ${dist} كم • ⏱️ ~${p.avg_time_minutes || 60} دقيقة • ${p.budget || ""}</div>
+        <div class="meta">
+          📍 ${dist} كم • ⏱️ ~${p.avg_time_minutes || 60} دقيقة • ${p.budget || ""}
+          <br>${ratingStars} ${reviews}
+        </div>
         <div class="desc">${p.description || ""}</div>
         ${p.notes ? `<div class="notes">💡 ${p.notes}</div>` : ""}
       </div>
