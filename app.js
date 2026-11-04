@@ -158,16 +158,15 @@ function getUserCityFromCoords(coords) {
   const [lat, lng] = coords;
 
   // نطاقات تقريبية للمدن الرئيسية في المنطقة الشرقية
+    // نطاقات تقريبية للمدن الرئيسية في المنطقة الشرقية
   const cities = [
-    { name: "الدمام",  lat: 26.43, lng: 50.10, radius: 15 },
-    { name: "الخبر",   lat: 26.28, lng: 50.20, radius: 15 },
-    { name: "الظهران", lat: 26.29, lng: 50.15, radius: 10 },
-    { name: "القطيف",  lat: 26.55, lng: 50.02, radius: 15 },
-    { name: "سيهات",   lat: 26.48, lng: 50.04, radius: 8 },
-    { name: "صفوى",    lat: 26.64, lng: 49.96, radius: 8 },
-    { name: "رأس تنورة", lat: 26.65, lng: 50.16, radius: 10 },
-    { name: "بقيق",    lat: 26.00, lng: 49.65, radius: 20 },
-    { name: "الأحساء", lat: 25.38, lng: 49.59, radius: 40 },
+    { name: "الخبر",     lat: 26.28, lng: 50.20, radius: 15 },
+    { name: "الدمام",    lat: 26.43, lng: 50.10, radius: 15 },
+    { name: "الظهران",   lat: 26.29, lng: 50.15, radius: 12 },
+    { name: "القطيف",    lat: 26.55, lng: 50.02, radius: 25 }, // ← شمل سيهات، صفوى، تاروت، جِدحفص
+    { name: "رأس تنورة", lat: 26.65, lng: 50.16, radius: 12 },
+    { name: "بقيق",      lat: 26.00, lng: 49.65, radius: 20 },
+    { name: "الأحساء",   lat: 25.38, lng: 49.59, radius: 40 },
   ];
 
   let best = null;
