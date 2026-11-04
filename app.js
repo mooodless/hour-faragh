@@ -10,6 +10,7 @@ let selectedMood = null;
 let allPlaces = [];
 let map, markersLayer;
 let userLocation = null; // ← موقع المستخدم الحالي
+let selectedCity = "";
 
 // ====== شاشة القفل ======
 const lockScreen = document.getElementById("lockScreen");
@@ -127,6 +128,14 @@ document.querySelectorAll("#moodChips button").forEach(btn => {
   });
 });
 
+document.querySelectorAll("#cityChips button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#cityChips button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    selectedCity = btn.dataset.val;
+  });
+});
+
 function checkReady() {
   document.getElementById("suggestBtn").disabled = !(selectedTime && selectedMood);
 }
@@ -142,6 +151,39 @@ function distanceKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+// ====== تحديد مدينة المستخدم التقريبية من إحداثياته ======
+// (بدون استدعاء Nominatim — نستخدم نطاقات إحداثيات معروفة)
+function getUserCityFromCoords(coords) {
+  if (!coords) return null;
+  const [lat, lng] = coords;
+
+  // نطاقات تقريبية للمدن الرئيسية في المنطقة الشرقية
+  const cities = [
+    { name: "الدمام",  lat: 26.43, lng: 50.10, radius: 15 },
+    { name: "الخبر",   lat: 26.28, lng: 50.20, radius: 15 },
+    { name: "الظهران", lat: 26.29, lng: 50.15, radius: 10 },
+    { name: "القطيف",  lat: 26.55, lng: 50.02, radius: 15 },
+    { name: "سيهات",   lat: 26.48, lng: 50.04, radius: 8 },
+    { name: "صفوى",    lat: 26.64, lng: 49.96, radius: 8 },
+    { name: "رأس تنورة", lat: 26.65, lng: 50.16, radius: 10 },
+    { name: "بقيق",    lat: 26.00, lng: 49.65, radius: 20 },
+    { name: "الأحساء", lat: 25.38, lng: 49.59, radius: 40 },
+  ];
+
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const c of cities) {
+    const d = distanceKm(lat, lng, c.lat, c.lng);
+    if (d <= c.radius && d < bestDist) {
+      best = c.name;
+      bestDist = d;
+    }
+  }
+
+  return best;
+}
+
 // ====== الاقتراح ======
 document.getElementById("suggestBtn").addEventListener("click", async () => {
   if (!allPlaces.length) {
@@ -152,8 +194,18 @@ document.getElementById("suggestBtn").addEventListener("click", async () => {
     userLocation = await getUserLocation();
   }
 
-  // 1. فلترة حسب المزاج
+    // 1. فلترة حسب المزاج
   let filtered = allPlaces.filter(p => p.category === selectedMood);
+
+  // 1.b فلترة حسب المدينة (إذا اختار المستخدم مدينة معينة)
+  if (selectedCity) {
+    const cityFiltered = filtered.filter(p => p.city === selectedCity);
+    if (cityFiltered.length > 0) {
+      filtered = cityFiltered;
+    } else {
+      console.warn(`لا توجد أماكن من فئة ${selectedMood} في ${selectedCity}، سيتم تجاهل فلتر المدينة`);
+    }
+  }
 
   // 2. شرط "50% من الوقت المتاح"
   const maxVisitDuration = selectedTime * 0.5;
@@ -166,13 +218,22 @@ document.getElementById("suggestBtn").addEventListener("click", async () => {
     timeFiltered = filtered;
   }
 
-  // 3. الترتيب: التقييم → عدد المقيمين → المسافة من موقع المستخدم
+    // 3. الترتيب الذكي:
+
+  const userCity = getUserCityFromCoords(userLocation);
+  console.log("🏙️ مدينة المستخدم التقريبية:", userCity);
+
   timeFiltered.sort((a, b) => {
     const ratingDiff = (b.rating || 0) - (a.rating || 0);
     if (Math.abs(ratingDiff) > 0.001) return ratingDiff;
 
     const reviewDiff = (b.review_count || 0) - (a.review_count || 0);
     if (reviewDiff !== 0) return reviewDiff;
+
+    // نفس المدينة أولاً
+    const aSameCity = a.city === userCity ? 1 : 0;
+    const bSameCity = b.city === userCity ? 1 : 0;
+    if (aSameCity !== bSameCity) return bSameCity - aSameCity;
 
     return distanceKm(userLocation[0], userLocation[1], a.lat, a.lng) -
            distanceKm(userLocation[0], userLocation[1], b.lat, b.lng);
@@ -227,7 +288,7 @@ function renderResults(places, totalCount) {
       <div class="result-card">
         <h3>${p.name}</h3>
         <div class="meta">
-          📍 ${dist} كم • ⏱️ ~${p.avg_time_minutes || 60} دقيقة • ${p.budget || ""}
+          ${p.city ? `🏙️ ${p.city} • ` : ""}📍 ${dist} كم • ⏱️ ~${p.avg_time_minutes || 60} دقيقة • ${p.budget || ""}
           <br>${ratingStars} ${reviews}
         </div>
         <div class="desc">${p.description || ""}</div>
