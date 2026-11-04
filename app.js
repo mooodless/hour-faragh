@@ -282,7 +282,7 @@ function renderResults(places, totalCount) {
     const dist = distanceKm(origin[0], origin[1], p.lat, p.lng).toFixed(1);
     const ratingStars = p.rating ? `⭐ ${p.rating.toFixed(1)}` : "⭐ —";
     const reviews = p.review_count ? `(${p.review_count} تقييم)` : "";
-    const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`;
+    const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name)}&center=${p.lat},${p.lng}`;
 
     return `
       <div class="result-card">
