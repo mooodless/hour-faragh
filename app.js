@@ -1,9 +1,11 @@
 // ====== الإعدادات ======
 const FAMILY_PASS = "family2026";              // ← غيّرها
-const FALLBACK_CENTER = [26.41226, 50.093419]; // ← يُستخدم فقط إذا رفض المستخدم إذن الموقع
-const STORAGE_KEY = "familyPlaces_v1";         // ← مفتاح التخزين المحلي
+const FALLBACK_CENTER = [26.41226, 50.093419]; // ← المركز الافتراضي (الدمام)
+const STORAGE_KEY = "familyPlaces_v1";
+const OSM_CACHE_KEY = "osmCache_v1";
+const OSM_CACHE_TTL = 24 * 60 * 60 * 1000;     // 24 ساعة
 
-// ====== البيانات الافتراضية (تُنسخ إلى localStorage أول مرة فقط) ======
+// ====== البيانات الافتراضية ======
 const DEFAULT_PLACES = [
   {
     id: "p1",
@@ -75,7 +77,6 @@ const DEFAULT_PLACES = [
     rating: 4.6,
     review_count: 450
   }
-  // ← أضف بقية الأماكن هنا
 ];
 
 // ====== الحالة ======
@@ -85,6 +86,7 @@ let allPlaces = [];
 let map, markersLayer;
 let userLocation = null;
 let selectedCity = "";
+let currentTopPlaces = []; // النتائج المعروضة حالياً (لاستخدامها عند الحفظ)
 
 // ====== شاشة القفل ======
 const lockScreen = document.getElementById("lockScreen");
@@ -256,71 +258,219 @@ function getUserCityFromCoords(coords) {
   return best;
 }
 
-// ====== الاقتراح ======
-document.getElementById("suggestBtn").addEventListener("click", async () => {
-  if (!allPlaces.length) {
-    await loadPlaces();
-  }
+// ====== تصنيفات OSM ======
+const OSM_TAG_MAP = {
+  "كوفي":  '["amenity"="cafe"]',
+  "مطعم":  '["amenity"="restaurant"]',
+  "حديقة": '["leisure"="park"]',
+  "سينما": '["amenity"="cinema"]'
+};
 
-  if (!userLocation) {
-    userLocation = await getUserLocation();
-  }
+// ====== جلب من Overpass مع تجاوز الفشل ======
+async function discoverFromOverpass(lat, lng, category, radius = 3000) {
+  const tag = OSM_TAG_MAP[category];
+  if (!tag) throw new Error("التصنيف الحالي لا يدعم الاكتشاف من OSM");
 
-  // 1. فلترة حسب المزاج
-  let filtered = allPlaces.filter(p => p.category === selectedMood);
+  const query = `
+    [out:json][timeout:25];
+    (
+      nwr${tag}(around:${radius},${lat},${lng});
+    );
+    out center 30;
+  `;
 
-  // 1.b فلترة حسب المدينة
-  if (selectedCity) {
-    const cityFiltered = filtered.filter(p => p.city === selectedCity);
-    if (cityFiltered.length > 0) {
-      filtered = cityFiltered;
-    } else {
-      console.warn(`لا توجد أماكن من فئة ${selectedMood} في ${selectedCity}، سيتم تجاهل فلتر المدينة`);
+  const endpoints = [
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass-api.de/api/interpreter"
+  ];
+
+  let lastError = null;
+
+  for (const url of endpoints) {
+    try {
+      console.log(`🌐 محاولة الاتصال بـ: ${url}`);
+      const res = await fetch(url, {
+        method: "POST",
+        body: "data=" + encodeURIComponent(query),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+      });
+
+      if (!res.ok) {
+        if ([502, 503, 504, 429].includes(res.status)) {
+          console.warn(`⚠️ ${url} أعاد ${res.status}، جاري التبديل...`);
+          lastError = new Error(`الخادم مشغول (${res.status})`);
+          continue;
+        }
+        throw new Error(`فشل الطلب: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const elements = data.elements || [];
+      console.log(`✅ ${url} أعاد ${elements.length} عنصر خام`);
+
+      const places = [];
+      for (const el of elements) {
+        if (!el.tags || !el.tags.name) continue;
+        const plat = el.lat ?? el.center?.lat;
+        const plng = el.lon ?? el.center?.lon;
+        if (typeof plat !== "number" || typeof plng !== "number") continue;
+
+        const city =
+          el.tags["addr:city"] ||
+          el.tags["addr:town"] ||
+          el.tags["addr:village"] ||
+          el.tags["is_in:city"] ||
+          "";
+
+        places.push({
+          id: "osm_" + el.type + "_" + el.id,
+          name: el.tags.name,
+          category: category,
+          city: city,
+          lat: plat,
+          lng: plng,
+          description: el.tags.description || el.tags["name:ar"] || "",
+          notes: "مصدر البيانات: OpenStreetMap",
+          avg_time_minutes: 60,
+          budget: "",
+          rating: 0,
+          review_count: 0,
+          osmUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`
+        });
+      }
+      console.log(`✅ بعد التنظيف: ${places.length} مكان صالح`);
+      return places;
+
+    } catch (err) {
+      console.warn(`⚠️ فشل الاتصال بـ ${url}:`, err.message);
+      lastError = err;
+      continue;
     }
   }
 
-  // 2. شرط "50% من الوقت المتاح"
+  throw new Error(lastError?.message || "جميع خوادم Overpass مشغولة، يرجى المحاولة لاحقاً");
+}
+
+// ====== جلب OSM مع ذاكرة مؤقتة ======
+async function fetchOSMWithCache(lat, lng, category, radius = 3000) {
+  const cacheRaw = localStorage.getItem(OSM_CACHE_KEY);
+  const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
+  const cacheKey = `${category}_${Math.round(lat*100)}_${Math.round(lng*100)}_${radius}`;
+
+  if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < OSM_CACHE_TTL) {
+    console.log("📦 استخدام نتائج OSM من الذاكرة المؤقتة");
+    return cache[cacheKey].places;
+  }
+
+  const places = await discoverFromOverpass(lat, lng, category, radius);
+
+  cache[cacheKey] = { ts: Date.now(), places };
+  try {
+    localStorage.setItem(OSM_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn("تعذر حفظ ذاكرة OSM:", e);
+  }
+
+  return places;
+}
+
+// ====== فلترة وترتيب ======
+function filterAndSort(places) {
+  let filtered = places.filter(p => p.category === selectedMood);
+
+  if (selectedCity) {
+    const cityFiltered = filtered.filter(p => p.city === selectedCity);
+    if (cityFiltered.length > 0) filtered = cityFiltered;
+  }
+
   const maxVisitDuration = selectedTime * 0.5;
   let timeFiltered = filtered.filter(p =>
     (p.avg_time_minutes || 60) <= maxVisitDuration
   );
+  if (timeFiltered.length === 0) timeFiltered = filtered;
 
-  if (timeFiltered.length === 0) {
-    timeFiltered = filtered;
-  }
-
-  // 3. الترتيب الذكي
   const userCity = getUserCityFromCoords(userLocation);
-  console.log("🏙️ مدينة المستخدم التقريبية:", userCity);
 
   timeFiltered.sort((a, b) => {
     const ratingDiff = (b.rating || 0) - (a.rating || 0);
     if (Math.abs(ratingDiff) > 0.001) return ratingDiff;
-
     const reviewDiff = (b.review_count || 0) - (a.review_count || 0);
     if (reviewDiff !== 0) return reviewDiff;
-
     const aSameCity = a.city === userCity ? 1 : 0;
     const bSameCity = b.city === userCity ? 1 : 0;
     if (aSameCity !== bSameCity) return bSameCity - aSameCity;
-
     return distanceKm(userLocation[0], userLocation[1], a.lat, a.lng) -
            distanceKm(userLocation[0], userLocation[1], b.lat, b.lng);
   });
 
-  const top = timeFiltered.slice(0, 5);
-  renderResults(top, timeFiltered.length);
+  return { top: timeFiltered.slice(0, 5), total: timeFiltered.length };
+}
+
+// ====== دمج بدون تكرار ======
+function mergePlaces(local, osm) {
+  const key = p => `${p.name}|${p.lat.toFixed(4)}|${p.lng.toFixed(4)}`;
+  const seen = new Set(local.map(key));
+  const added = osm.filter(p => !seen.has(key(p)));
+  return [...local, ...added];
+}
+
+// ====== زر "اقترح لي" — عرض تدريجي ======
+document.getElementById("suggestBtn").addEventListener("click", async () => {
+  if (!allPlaces.length) await loadPlaces();
+  if (!userLocation) userLocation = await getUserLocation();
+
+  // المرحلة 1: عرض المحلي فوراً
+  const localResults = filterAndSort(allPlaces);
+  renderResults(localResults.top, localResults.total, { loadingOSM: true });
+
+  // المرحلة 2: جلب OSM في الخلفية
+  try {
+    const osmPlaces = await fetchOSMWithCache(
+      userLocation[0], userLocation[1], selectedMood
+    );
+
+    if (osmPlaces.length === 0) {
+      const status = document.getElementById("osmStatus");
+      if (status) status.textContent = "ℹ️ لم نجد أماكن إضافية في OpenStreetMap";
+      return;
+    }
+
+    const combined = mergePlaces(allPlaces, osmPlaces);
+    const merged = filterAndSort(combined);
+    renderResults(merged.top, merged.total, {
+      loadingOSM: false,
+      osmCount: osmPlaces.length
+    });
+
+  } catch (err) {
+    console.warn("⚠️ فشل جلب OSM:", err.message);
+    const status = document.getElementById("osmStatus");
+    if (status) status.textContent = "⚠️ تعذر الاتصال بـ OpenStreetMap، نعرض النتائج المحلية فقط";
+  }
 });
 
 // ====== عرض النتائج ======
-function renderResults(places, totalCount) {
+function renderResults(places, totalCount, opts = {}) {
   const resultsEl = document.getElementById("results");
   const mapEl = document.getElementById("map");
 
   markersLayer.clearLayers();
+  currentTopPlaces = places;
+
+  // رسالة حالة OSM
+  let statusMsg = "";
+  if (opts.loadingOSM) {
+    statusMsg = `<p class="empty" id="osmStatus" style="background:#e6fffa; padding:10px; border-radius:12px; margin-bottom:12px;">
+      🔍 جاري البحث في OpenStreetMap أيضاً...
+    </p>`;
+  } else if (opts.osmCount) {
+    statusMsg = `<p class="empty" id="osmStatus" style="background:#e6fffa; padding:10px; border-radius:12px; margin-bottom:12px;">
+      ✅ تم جلب ${opts.osmCount} مكان إضافي من OpenStreetMap
+    </p>`;
+  }
 
   if (places.length === 0) {
-    resultsEl.innerHTML = `<p class="empty">لا توجد أماكن مطابقة حالياً. جرّب مزاجاً آخر.</p>`;
+    resultsEl.innerHTML = statusMsg + `<p class="empty">لا توجد أماكن مطابقة حالياً. جرّب مزاجاً آخر.</p>`;
     mapEl.classList.remove("visible");
     return;
   }
@@ -345,26 +495,53 @@ function renderResults(places, totalCount) {
     </p>`;
   }
 
-  resultsEl.innerHTML = warning + countMsg + places.map(p => {
+  resultsEl.innerHTML = statusMsg + warning + countMsg + places.map(p => {
     const dist = distanceKm(origin[0], origin[1], p.lat, p.lng).toFixed(1);
     const ratingStars = p.rating ? `⭐ ${p.rating.toFixed(1)}` : "⭐ —";
     const reviews = p.review_count ? `(${p.review_count} تقييم)` : "";
     const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+    const isOSM = p.id && String(p.id).startsWith("osm_");
+    const isSaved = !isOSM || allPlaces.some(x => x.id === p.id);
 
     return `
-      <div class="result-card">
-        <h3>${p.name}</h3>
+      <div class="result-card" ${isOSM ? 'style="border-right:4px solid #38b2ac;"' : ""}>
+        <h3>
+          ${p.name}
+          ${isOSM ? '<span style="background:#38b2ac;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-right:6px;">OSM</span>' : ""}
+        </h3>
         <div class="meta">
           ${p.city ? `🏙️ ${p.city} • ` : ""}📍 ${dist} كم • ⏱️ ~${p.avg_time_minutes || 60} دقيقة • ${p.budget || ""}
           <br>${ratingStars} ${reviews}
         </div>
         <div class="desc">${p.description || ""}</div>
         ${p.notes ? `<div class="notes">💡 ${p.notes}</div>` : ""}
-        <a href="${gmapsUrl}" target="_blank" rel="noopener" class="gmaps-link">🚗 الاتجاهات إلى المكان</a>
+        <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <a href="${gmapsUrl}" target="_blank" rel="noopener" class="gmaps-link" style="flex:1;">🚗 الاتجاهات</a>
+          ${isOSM ? `<button class="save-osm-btn" data-id="${p.id}" ${isSaved ? "disabled" : ""}
+                       style="flex:1; background:${isSaved ? "#999" : "#38b2ac"}; color:#fff; border:none; padding:8px; border-radius:8px; cursor:pointer;">
+                     ${isSaved ? "✓ محفوظ" : "💾 حفظ في قائمتي"}
+                   </button>` : ""}
+        </div>
       </div>
     `;
   }).join("");
 
+  // ربط أزرار الحفظ
+  resultsEl.querySelectorAll(".save-osm-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id;
+      const place = currentTopPlaces.find(p => p.id === id);
+      if (!place) return;
+      if (allPlaces.some(x => x.id === id)) return;
+      allPlaces.push(place);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(allPlaces));
+      btn.disabled = true;
+      btn.textContent = "✓ محفوظ";
+      btn.style.background = "#999";
+    });
+  });
+
+  // رسم الخريطة
   const bounds = [];
   places.forEach(p => {
     L.marker([p.lat, p.lng]).addTo(markersLayer)
@@ -385,16 +562,13 @@ function renderResults(places, totalCount) {
   map.fitBounds(bounds, { padding: [30, 30] });
 }
 
-// ====== إدارة الأماكن: تصدير / استيراد / استعادة ======
+// ====== إدارة الأماكن: رسالة ======
 function refreshAfterManage(msg) {
   const msgEl = document.getElementById("manageMsg");
   if (msgEl) msgEl.textContent = msg;
-  // مسح النتائج القديمة حتى لا تختلط
-  const resEl = document.getElementById("results");
-  if (resEl) resEl.innerHTML = "";
-  markersLayer.clearLayers();
 }
 
+// ====== تصدير ======
 document.getElementById("exportBtn")?.addEventListener("click", () => {
   const data = JSON.stringify(allPlaces, null, 2);
   const blob = new Blob([data], { type: "application/json" });
@@ -409,6 +583,7 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
   refreshAfterManage(`✅ تم تصدير ${allPlaces.length} مكان.`);
 });
 
+// ====== استيراد ======
 document.getElementById("importInput")?.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -425,7 +600,6 @@ document.getElementById("importInput")?.addEventListener("change", async (e) => 
     const existing = new Set(allPlaces.map(p => `${p.name}|${p.lat}|${p.lng}`));
     const added = valid.filter(p => !existing.has(`${p.name}|${p.lat}|${p.lng}`));
 
-    // ضمان وجود id
     added.forEach((p, i) => {
       if (!p.id) p.id = "p_imp_" + Date.now() + "_" + i;
     });
@@ -436,18 +610,20 @@ document.getElementById("importInput")?.addEventListener("change", async (e) => 
   } catch (err) {
     refreshAfterManage("❌ " + err.message);
   } finally {
-    e.target.value = ""; // للسماح بإعادة استيراد نفس الملف
+    e.target.value = "";
   }
 });
 
+// ====== استعادة الافتراضي ======
 document.getElementById("resetBtn")?.addEventListener("click", () => {
   if (!confirm("سيتم حذف كل الأماكن المضافة واستعادة القائمة الافتراضية. متابعة؟")) return;
   allPlaces = DEFAULT_PLACES.map(p => ({ ...p }));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(allPlaces));
+  localStorage.removeItem(OSM_CACHE_KEY);
   refreshAfterManage(`✅ تمت الاستعادة. الإجمالي: ${allPlaces.length}`);
 });
 
-// ====== إضافة مكان جديد ======
+// ====== إضافة مكان يدوياً ======
 document.getElementById("addPlaceForm")?.addEventListener("submit", (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
