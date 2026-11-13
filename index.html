@@ -52,6 +52,7 @@
           <button data-val="سينما">🎬 سينما</button>
         </div>
       </section>
+
       <section class="card">
         <label>المدينة (اختياري)</label>
         <div class="chips" id="cityChips">
@@ -69,6 +70,52 @@
       <div id="map"></div>
 
       <div id="results"></div>
+
+      <!-- إدارة الأماكن -->
+      <details id="manageSection" class="card">
+        <summary>⚙️ إدارة الأماكن (متقدم)</summary>
+
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
+          <button id="exportBtn" type="button">⬇️ تصدير الأماكن (JSON)</button>
+          <label class="file-btn" style="display:inline-block; cursor:pointer;">
+            ⬆️ استيراد من ملف
+            <input type="file" id="importInput" accept="application/json" hidden />
+          </label>
+          <button id="resetBtn" type="button" style="background:#c53030;">🗑️ استعادة الافتراضي</button>
+        </div>
+
+        <p id="manageMsg" class="empty" style="margin-top:10px;"></p>
+
+        <hr style="margin:16px 0; border:none; border-top:1px solid #eee;" />
+
+        <form id="addPlaceForm" style="display:flex; flex-direction:column; gap:8px;">
+          <strong>➕ إضافة مكان جديد</strong>
+          <input name="name" placeholder="اسم المكان *" required />
+          <input name="city" placeholder="المدينة" />
+          <div style="display:flex; gap:8px;">
+            <input name="lat" type="number" step="any" placeholder="خط العرض *" required />
+            <input name="lng" type="number" step="any" placeholder="خط الطول *" required />
+          </div>
+          <select name="category" required>
+            <option value="">-- التصنيف * --</option>
+            <option value="كوفي">كوفي</option>
+            <option value="مطعم">مطعم</option>
+            <option value="حديقة">حديقة</option>
+            <option value="سينما">سينما</option>
+          </select>
+          <div style="display:flex; gap:8px;">
+            <input name="avg_time_minutes" type="number" placeholder="وقت الزيارة (دقيقة)" />
+            <input name="budget" placeholder="الميزانية" />
+          </div>
+          <input name="description" placeholder="وصف" />
+          <input name="notes" placeholder="ملاحظات" />
+          <div style="display:flex; gap:8px;">
+            <input name="rating" type="number" step="0.1" min="0" max="5" placeholder="التقييم (0-5)" />
+            <input name="review_count" type="number" placeholder="عدد التقييمات" />
+          </div>
+          <button type="submit">حفظ المكان</button>
+        </form>
+      </details>
     </main>
   </div>
 

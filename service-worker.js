@@ -1,4 +1,4 @@
-const CACHE = "faragh-v8";
+const CACHE = "faragh-v10"; // ← رُفع الإصدار لإجبار التحديث
 const ASSETS = ["/", "/index.html", "/style.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", e => {
@@ -16,8 +16,10 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  // لا تخزن طلبات Supabase — دعها تمر مباشرة
-  if (e.request.url.includes("supabase.co")) return;
+  // لا تخزن طلبات خارجية غير أساسية (مثل Leaflet) — دعها تمر مباشرة
+  if (e.request.url.includes("unpkg.com") || e.request.url.includes("tile.openstreetmap.org")) {
+    return;
+  }
 
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
